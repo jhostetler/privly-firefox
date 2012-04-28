@@ -24,9 +24,7 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 *******************************************************************************/
-
-var privly = {
-
+var privly = {	
   //Matches:
   //              http://
   //              https://
@@ -35,15 +33,25 @@ var privly = {
   //also matches localhost:3000
   privlyReferencesRegex: /\b(https?:\/\/){0,1}(priv\.ly|localhost:3000)(\/posts)(\/\w*){1,}\b/gi,
   
+  /*
+   * enum to hold various extension modes and their value. extension modes are set through firefox's
+   * extension api. https://developer.mozilla.org/en/Code_snippets/Preferences
+   */ 
+  extensionModeEnum : {
+    ACTIVE : 0,
+    PASSIVE : 1,
+    CLICKTHROUGH : 2
+  },
+  
   // Takes a domain with an optional http(s) in front and returns a fully formed domain name
   makeHref: function(domain)
   {
-    var hasHTTPRegex = /^((https?)\:\/\/)/i
-    if(!hasHTTPRegex.test(domain)) 
+    var hasHTTPRegex = /^((https?)\:\/\/)/i;
+    if(!hasHTTPRegex.test(domain))
         domain = "http://" + domain;
     return domain;
   },
-
+  
   //Make plain text links into anchor elements
   createLinks: function() 
   {
@@ -96,18 +104,14 @@ var privly = {
           }
       }
   },
-
   //Kill default link behaviour on Privly Links
-  makePassive: function(anchor) 
-  {    
+  makePassive: function(e) 
+  {
     //Preventing the default link behavior
-    anchor.addEventListener("mousedown", function(e){
-        e.cancelBubble = true;
-        e.stopPropagation();
-        e.preventDefault();
-        privly.replaceLink(anchor);
-      }, 
-      true);
+    e.cancelBubble = true;
+    e.stopPropagation();
+    e.preventDefault();
+    privly.replaceLink(e.target);
   },
   
   //Checks link attributes and text for privly links without the proper href attribute.
@@ -150,46 +154,56 @@ var privly = {
 
   // Replace an anchor element with its referenced content.
   replaceLink: function(object) 
-  { 
-    var iFrame = document.createElement('iframe');
-    iFrame.setAttribute("frameborder","0");
-    iFrame.setAttribute("vspace","0");
-    iFrame.setAttribute("hspace","0");
-    iFrame.setAttribute("name","privlyiframe");
-    iFrame.setAttribute("width","100%");
-    iFrame.setAttribute("marginwidth","0");
-    iFrame.setAttribute("marginheight","0");
-    iFrame.setAttribute("height","1px");
-    iFrame.setAttribute("src",object.href + ".iframe?frame_id=" + privly.nextAvailableFrameID);
-    iFrame.setAttribute("id","ifrm"+privly.nextAvailableFrameID);
-    iFrame.setAttribute("frameborder","0");
-    privly.nextAvailableFrameID++;
-    iFrame.setAttribute("style","width: 100%; height: 32px; overflow: hidden;");
-    iFrame.setAttribute("scrolling","no");
-    iFrame.setAttribute("overflow","hidden");
-    
-    object.parentNode.replaceChild(iFrame, object);
+  {
+    if(object.parentNode != null){
+      var iFrame = document.createElement('iframe');
+      iFrame.setAttribute("frameborder","0");
+      iFrame.setAttribute("vspace","0");
+      iFrame.setAttribute("hspace","0");
+      iFrame.setAttribute("name","privlyiframe");
+      iFrame.setAttribute("width","100%");
+      iFrame.setAttribute("marginwidth","0");
+      iFrame.setAttribute("marginheight","0");
+      iFrame.setAttribute("height","1px");
+      iFrame.setAttribute("src",object.href + ".iframe?frame_id=" + privly.nextAvailableFrameID);
+      iFrame.setAttribute("id","ifrm"+privly.nextAvailableFrameID);
+      iFrame.setAttribute("frameborder","0");
+      privly.nextAvailableFrameID++;
+      iFrame.setAttribute("style","width: 100%; height: 32px; overflow: hidden;");
+      iFrame.setAttribute("scrolling","no");
+      iFrame.setAttribute("overflow","hidden");
+      object.parentNode.replaceChild(iFrame, object);
+    }
   },
-
+  
   //Replace all Privly links with their iframe
-  replaceLinks: function(){
+  replaceLinks: function()
+  {
+    elements = document.getElementsByTagName("privModeElement");
+    if(elements != null && elements.length != 0){
+      this.extensionMode = elements[0].getAttribute('mode');
+    }
     var anchors = document.links;
     var i = anchors.length;
-    while (i--){
+
+    while (--i >= 0){
       var a = anchors[i];
-      privly.privlyReferencesRegex.lastIndex = 0;
-      if(a.href && privly.privlyReferencesRegex.test(a.href))
+      this.privlyReferencesRegex.lastIndex = 0;
+      if(a.href && this.privlyReferencesRegex.test(a.href))
       {
-        var exclude = a.getAttribute("privly");
-        if(exclude != "exclude")
-        {
-          if(privly.active)
-          {
-            privly.replaceLink(a);
+      	var exclude = a.getAttribute("privly");
+        if(exclude == null || exclude != "exclude"){
+          if(this.extensionMode == privly.extensionModeEnum.ACTIVE){
+            this.replaceLink(a);
           }
-          else
-          {
-            privly.makePassive(a);
+          else if(this.extensionMode == privly.extensionModeEnum.PASSIVE){
+            a.innerHTML = 'Read in Place';
+            a.addEventListener("mousedown",privly.makePassive,true);
+          }
+          else if(this.extensionMode == privly.extensionModeEnum.CLICKTHROUGH){
+            a.innerHTML = "Privly is in sleep mode so it can catch up with demand. The content may still be viewable by clicking this link";
+            a.setAttribute('target','_blank');
+            a.removeEventListener("mousedown",privly.makePassive,true);
           }
         }
       }
@@ -201,19 +215,22 @@ var privly = {
     
     if(message.origin !== "https://priv.ly" && message.origin !== "http://localhost:3000")
       return;
-    
+      
     var data = message.data.split(",");
     
     var iframe = document.getElementById("ifrm"+data[0]);
     iframe.style.height = data[1]+'px';
   },
   
-  //prevents DOMNodeInserted from sending hundreds of extension runs
+  //indicates whether the extension shoud immediatly replace all Privly
+  //links it encounters
+  extensionMode: 0,
+  //prevents DOMNodeInserted from sending hundreds of extension runsmake
   runPending: false,
   
   //prep the page and replace the links if it is in active mode
-  run: function(){
-
+  run: function()
+  {
     //create and correct the links pointing
     //to Privly content
     privly.createLinks();
@@ -223,32 +240,30 @@ var privly = {
     //otherwise replace all links default behavior
     privly.replaceLinks();
   },
-  
+
   //runs privly once then registers the update listener
   //for dynamic pages
   listeners: function(){
     //don't recursively replace links
-    if(document.URL.indexOf('priv.ly') != -1 || document.URL.indexOf('localhost:3000') != -1)
+    if(typeof(document.URL) != 'undefined' && document.URL.indexOf('priv.ly') != -1 || document.URL.indexOf('localhost:3000') != -1)
       return;
-        
+      
     //The content's iframe will post a message to the hosting document. This listener sets the height 
     //of the iframe according to the messaged height
     window.addEventListener("message", privly.resizeIframe, false, true);
-    
     privly.runPending=true;
     setTimeout(
       function(){
         privly.runPending=false;
         privly.run();
       },
-      100);
+    100);
     
     //Everytime the page is updated via javascript, we have to check
     //for new Privly content. This might not be supported on other platforms
     document.addEventListener("DOMNodeInserted", function(event) {
-      
       //we check the page a maximum of two times a second
-      if(privly.runPending )
+      if(privly.runPending)
         return;
       privly.runPending=true;
       
@@ -261,10 +276,6 @@ var privly = {
     });
   },
   
-  //indicates whether the extension shoud immediatly replace all Privly
-  //links it encounters
-  active: true,
-  
   // cross platform onload event
   // won't attach anything on IE 
   // on macintosh systems.
@@ -272,15 +283,16 @@ var privly = {
     if (obj.addEventListener){ 
       obj.addEventListener(evType, fn, false); 
       return true; 
-    } else if (obj.attachEvent){ 
+    }
+    else if (obj.attachEvent){ 
       var r = obj.attachEvent("on"+evType, fn); 
       return r; 
-    } else { 
+    }
+    else { 
       return false; 
     } 
   }
-  
-};
+}
 
-privly.addEvent(window, 'load', privly.listeners);
+privly.addEvent(window, 'load', privly.listeners); 
 
