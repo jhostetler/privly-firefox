@@ -14,6 +14,9 @@
     <em:homepageURL>https://priv.ly/</em:homepageURL>
     <em:optionsURL>chrome://privly/content/options.xul</em:optionsURL>
     <em:iconURL>chrome://privly/skin/logo_64.png</em:iconURL>
+	<!-- Can't load shared library from extension directory unless em:unpack = true
+		 https://developer.mozilla.org/en/install_manifests#unpack -->
+	<em:unpack>true</em:unpack>
     
     <em:targetApplication>
       <Description>

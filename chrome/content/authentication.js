@@ -34,6 +34,18 @@ var privlyAuthentication =
           if(privlyAuthentication.authToken)
           {
             alert("You are now logged into Privly");
+			
+			// Create a crypto session and store it in privlyAuthentication
+			try {
+				var sConfigDir = privlyCrypto.getProfileDirectory();
+				privlyCrypto.init( "nss" );
+				var session = privlyCrypto.CreateSession( sConfigDir, userEmailAddress, userPassword );
+				privlyAuthentication.cryptoSession = session;
+			}
+			catch( err ) {
+				privlyAuthentication.cryptoSession = null;
+				alert( "CreateSession() failed: " + err );
+			}
           }
           else
           {
@@ -62,6 +74,12 @@ var privlyAuthentication =
         accepts: "json",
         success: function(data, textStatus, jqXHR){
           privlyAuthentication.authToken = "";
+		  try {
+			privlyCrypto.DestroySession( privlyAuthentication.cryptoSession );
+		  }
+		  catch( err ) {
+			alert( "Failed to destroy crypto session: " + err.code );
+		  }
           alert("You are logged out from Priv.ly");
         },
         error: function(data, textStatus, jqXHR){
